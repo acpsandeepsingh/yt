@@ -1,9 +1,8 @@
-
 const fetch = require('node-fetch');
 
 /**
- * HarmonyStream Hardened Extraction Engine v4
- * Features: Triple-Profile Rotation (Web, Android, iOS), Human Mimicry, and Auto-Recovery.
+ * HarmonyStream Hardened Extraction Engine v5
+ * Features: Triple-Profile Rotation (Desktop, Android, iOS), Human Mimicry, and Auto-Recovery.
  */
 
 const PROFILES = [
@@ -139,14 +138,11 @@ module.exports = async (req, res) => {
     }
   };
 
-  // Profile Rotation Strategy: Try Web, then Android, then iOS
   let lastError = null;
   for (const profile of PROFILES) {
     const result = await tryExtraction(profile);
     if (result.success) return res.status(200).json(result);
-    
     lastError = result;
-    // If it's a permanent error like private video, don't bother rotating
     if (result.error === 'HTTP_404') break;
   }
 
