@@ -33,14 +33,12 @@ jobs:
         NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY }}
       run: npm run build
         
-    - name: Create .nojekyll file
-      run: |
-        mkdir -p ./out
-        touch ./out/.nojekyll
-        
     - name: Setup Pages
       uses: actions/configure-pages@v5
       
+    - name: Create .nojekyll
+      run: touch out/.nojekyll
+
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
       with:
