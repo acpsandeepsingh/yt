@@ -1,8 +1,8 @@
 const fetch = require('node-fetch');
 
 /**
- * HarmonyStream Hardened Extraction Engine v6
- * Features: Triple-Profile Rotation (Desktop, Android, iOS), Human Mimicry, and Auto-Recovery.
+ * HarmonyStream Hardened Extraction Engine v7
+ * Features: Quad-Profile Rotation including low-security device emulation (Oculus/Quest).
  */
 
 const PROFILES = [
@@ -25,6 +25,15 @@ const PROFILES = [
       'X-YouTube-Client-Name': '3',
       'X-YouTube-Client-Version': '2.20240215.00.00',
       'Origin': 'https://www.youtube.com'
+    }
+  },
+  {
+    name: 'OCULUS_BROWSER',
+    ua: 'Mozilla/5.0 (Linux; Android 12; Quest 3) AppleWebKit/537.36 (KHTML, like Gecko) OculusBrowser/31.0.0.14.537 SamsungBrowser/4.0 Chrome/119.0.6045.193 Mobile Safari/537.36',
+    headers: {
+      'Accept': '*/*',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'cross-site'
     }
   },
   {
@@ -65,7 +74,7 @@ module.exports = async (req, res) => {
     };
 
     try {
-      const response = await fetch(targetUrl, { headers, timeout: 10000 });
+      const response = await fetch(targetUrl, { headers, timeout: 12000 });
       if (!response.ok) return { error: `HTTP_${response.status}` };
       
       const html = await response.text();
