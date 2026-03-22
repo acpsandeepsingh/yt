@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HarmonyStream | Video Downloader</title>
+    <link rel="icon" href="https://raw.githubusercontent.com/lucide-react/lucide/main/icons/music.svg">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #f8fafc;
+            --muted: #94a3b8;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-h-screen;
+            padding: 20px;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background: var(--card);
+            padding: 2rem;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+        h1 { margin-bottom: 0.5rem; color: var(--primary); }
+        p { color: var(--muted); margin-bottom: 2rem; }
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 1.5rem;
+        }
+        input {
+            flex: 1;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: white;
+            outline: none;
+        }
+        input:focus { border-color: var(--primary); }
+        button {
+            padding: 12px 24px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        button:hover { opacity: 0.9; }
+        button:disabled { background: #475569; cursor: not-allowed; }
+        
+        #result { display: none; margin-top: 2rem; text-align: left; }
+        .video-info { display: flex; gap: 15px; margin-bottom: 1.5rem; background: #0f172a; padding: 10px; border-radius: 8px; }
+        .video-info img { width: 120px; height: auto; border-radius: 4px; }
+        .video-info div { flex: 1; }
+        .video-title { font-weight: bold; margin-bottom: 4px; display: block; }
+        .video-author { color: var(--muted); font-size: 0.9rem; }
+
+        .format-list { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; padding-right: 5px; }
+        .format-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #334155;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+        .format-item span { font-weight: 500; }
+        .dl-btn { background: #10b981; padding: 6px 12px; font-size: 0.8rem; }
+        
+        .error { color: #ef4444; background: rgba(239, 68, 68, 0.1); padding: 10px; border-radius: 8px; margin-top: 1rem; display: none; }
+        .loader { display: none; margin: 20px auto; border: 3px solid #334155; border-top: 3px solid var(--primary); border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>HarmonyStream</h1>
+        <p>Private YouTube Stream Extraction Engine</p>
+
+        <div class="input-group">
+            <input type="text" id="urlInput" placeholder="Paste YouTube URL here...">
+            <button id="extractBtn">Analyze</button>
+        </div>
+
+        <div class="loader" id="loader"></div>
+        <div class="error" id="error"></div>
+
+        <div id="result">
+            <div class="video-info">
+                <img id="vThumb" src="" alt="">
+                <div>
+                    <span class="video-title" id="vTitle"></span>
+                    <span class="video-author" id="vAuthor"></span>
+                </div>
+            </div>
+            <div class="format-list" id="formatList"></div>
+        </div>
+    </div>
+
+    <script>
+        const btn = document.getElementById('extractBtn');
+        const input = document.getElementById('urlInput');
+        const loader = document.getElementById('loader');
+        const error = document.getElementById('error');
+        const result = document.getElementById('result');
+
+        btn.onclick = async () => {
+            const url = input.value.trim();
+            if (!url) return;
+
+            // Reset UI
+            error.style.display = 'none';
+            result.style.display = 'none';
+            loader.style.display = 'block';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch(`/api/extract?url=${encodeURIComponent(url)}`);
+                const data = await response.json();
+
+                if (!response.ok) throw new Error(data.message || 'Failed to extract video.');
+
+                // Populate Info
+                document.getElementById('vThumb').src = data.thumbnail;
+                document.getElementById('vTitle').innerText = data.title;
+                document.getElementById('vAuthor').innerText = data.author;
+
+                // Populate Formats
+                const list = document.getElementById('formatList');
+                list.innerHTML = '';
+                
+                data.allFormats.forEach(f => {
+                    const item = document.createElement('div');
+                    item.className = 'format-item';
+                    item.innerHTML = `
+                        <div>
+                            <span>${f.quality}</span> • ${f.mimeType.split('/')[1].toUpperCase()} 
+                            <small style="color:#94a3b8; margin-left:10px;">${f.contentLength}</small>
+                        </div>
+                        <button class="dl-btn" onclick="window.open('${f.url}', '_blank')">Download</button>
+                    `;
+                    list.appendChild(item);
+                });
+
+                result.style.display = 'block';
+            } catch (err) {
+                error.innerText = err.message;
+                error.style.display = 'block';
+            } finally {
+                loader.style.display = 'none';
+                btn.disabled = false;
+            }
+        };
+    </script>
+</body>
+</html>

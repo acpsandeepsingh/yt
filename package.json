@@ -1,0 +1,9 @@
+{
+  "name": "harmony-extraction-api",
+  "version": "1.0.0",
+  "description": "Private Stream Resolver for HarmonyStream",
+  "main": "api/extract.js",
+  "dependencies": {
+    "node-fetch": "^2.7.0"
+  }
+}
