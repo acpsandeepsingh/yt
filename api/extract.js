@@ -1,8 +1,9 @@
+
 const fetch = require('node-fetch');
 
 /**
- * HarmonyStream Hardened Extraction Engine v3
- * Features: Automatic Profile Rotation, Human Mimicry, and Comprehensive Error Handling.
+ * HarmonyStream Hardened Extraction Engine v4
+ * Features: Triple-Profile Rotation (Web, Android, iOS), Human Mimicry, and Auto-Recovery.
  */
 
 const PROFILES = [
@@ -10,10 +11,11 @@ const PROFILES = [
     name: 'DESKTOP_WEB',
     ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
     headers: {
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
       'Sec-Fetch-Dest': 'document',
       'Sec-Fetch-Mode': 'navigate',
       'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
       'Upgrade-Insecure-Requests': '1'
     }
   },
@@ -22,15 +24,16 @@ const PROFILES = [
     ua: 'com.google.android.youtube/19.05.36 (Linux; U; Android 14; en_US; SM-G998B) gzip',
     headers: {
       'X-YouTube-Client-Name': '3',
-      'X-YouTube-Client-Version': '2.20240215.00.00'
+      'X-YouTube-Client-Version': '2.20240215.00.00',
+      'Origin': 'https://www.youtube.com'
     }
   },
   {
-    name: 'IOS_SAFARI',
-    ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Mobile/15E148 Safari/604.1',
+    name: 'IOS_APP',
+    ua: 'com.google.ios.youtube/19.05.36 (iPhone16,2; U; CPU iPhone OS 17_3 like Mac OS X; en_US)',
     headers: {
       'X-YouTube-Client-Name': '5',
-      'X-YouTube-Client-Version': '18.49.2'
+      'X-YouTube-Client-Version': '19.05.36'
     }
   }
 ];
@@ -63,7 +66,7 @@ module.exports = async (req, res) => {
     };
 
     try {
-      const response = await fetch(targetUrl, { headers, timeout: 8000 });
+      const response = await fetch(targetUrl, { headers, timeout: 10000 });
       if (!response.ok) return { error: `HTTP_${response.status}` };
       
       const html = await response.text();
@@ -72,8 +75,8 @@ module.exports = async (req, res) => {
         return { error: 'BOT_CHALLENGE' };
       }
 
-      if (html.includes("vss_host")) { // Check for common blocked patterns
-         if (html.includes("sign in to confirm")) return { error: 'SIGN_IN_REQUIRED' };
+      if (html.includes("sign in to confirm")) {
+         return { error: 'SIGN_IN_REQUIRED' };
       }
 
       const patterns = [
@@ -114,7 +117,7 @@ module.exports = async (req, res) => {
           mimeType: f.mimeType.split(';')[0],
           quality: f.qualityLabel || (f.mimeType.includes('audio') ? 'Audio' : 'Default'),
           url: streamUrl.includes('ratebypass') ? streamUrl : `${streamUrl}&ratebypass=yes`,
-          contentLength: f.contentLength || 'Unknown'
+          contentLength: f.contentLength ? (parseInt(f.contentLength) / 1024 / 1024).toFixed(2) + ' MB' : 'Unknown'
         };
       }).filter(Boolean);
 
@@ -126,30 +129,30 @@ module.exports = async (req, res) => {
         profile: profile.name,
         title: data.videoDetails?.title || 'Unknown Video',
         author: data.videoDetails?.author || 'Unknown Artist',
-        thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        thumbnail: `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
         audioUrl: bestAudio?.url || null,
         videoUrl: bestVideo?.url || bestAudio?.url || null,
         allFormats: parsedFormats
       };
     } catch (e) {
-      return { error: 'NETWORK_TIMEOUT', message: e.message };
+      return { error: 'NETWORK_ERROR', message: e.message };
     }
   };
 
-  // Profile Rotation Strategy
+  // Profile Rotation Strategy: Try Web, then Android, then iOS
   let lastError = null;
   for (const profile of PROFILES) {
     const result = await tryExtraction(profile);
     if (result.success) return res.status(200).json(result);
     
     lastError = result;
-    // If it's not a block, it's likely a real failure (private video, etc), so don't rotate
-    if (result.error !== 'BOT_CHALLENGE' && result.error !== 'HTTP_403' && result.error !== 'SIGN_IN_REQUIRED') break;
+    // If it's a permanent error like private video, don't bother rotating
+    if (result.error === 'HTTP_404') break;
   }
 
   return res.status(403).json({
     success: false,
     error: lastError?.error || 'EXTRACTION_FAILED',
-    message: 'YouTube is challenging the server identity. Retrying from a different device or identity is recommended.'
+    message: 'YouTube bot detection active. Retrying with different profiles failed.'
   });
 };
