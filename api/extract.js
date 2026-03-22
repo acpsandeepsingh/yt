@@ -1,7 +1,7 @@
 const fetch = require('node-fetch');
 
 /**
- * HarmonyStream Hardened Extraction Engine v5
+ * HarmonyStream Hardened Extraction Engine v6
  * Features: Triple-Profile Rotation (Desktop, Android, iOS), Human Mimicry, and Auto-Recovery.
  */
 
