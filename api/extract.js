@@ -2,22 +2,18 @@ const fetch = require('node-fetch');
 
 /**
  * HarmonyStream Private Extraction API & Engine
- * Optimized for multi-format extraction and robust error handling.
+ * Hardened with human-mimicry headers to bypass "Bot Detection" errors.
  */
 module.exports = async (req, res) => {
-  // 1. Setup CORS & Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Content-Type', 'application/json');
   
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { id, url } = req.query;
   let videoId = id;
 
-  // Resolve ID from URL if provided
   if (url) {
     const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
     const match = url.match(regExp);
@@ -25,35 +21,34 @@ module.exports = async (req, res) => {
   }
 
   if (!videoId) {
-    return res.status(400).json({ 
-      error: 'Invalid Request', 
-      message: 'Provide a valid YouTube Video ID or URL.' 
-    });
+    return res.status(400).json({ error: 'Invalid Request', message: 'Provide a valid YouTube Video ID.' });
   }
+
+  const HUMAN_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Sec-Fetch-Mode': 'navigate',
+    'Cache-Control': 'no-cache'
+  };
 
   try {
     const timestamp = Math.floor(Date.now() / 1000);
-    // Use the desktop watch page for the most detailed metadata
     const targetUrl = `https://www.youtube.com/watch?v=${videoId}&has_verified=1&bpctr=${timestamp}`;
     
-    console.log(`[Engine] Extracting all formats for: ${videoId}`);
+    console.log(`[Engine] Human-Mimicry Extraction for: ${videoId}`);
 
-    const response = await fetch(targetUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Cache-Control': 'no-cache'
-      },
-      timeout: 10000
-    });
+    const response = await fetch(targetUrl, { headers: HUMAN_HEADERS, timeout: 10000 });
+    const text = await response.text();
 
-    if (!response.ok) {
-      throw new Error(`YouTube Gateway Error: ${response.status}`);
+    // Specific Bot Detection Check
+    if (text.includes("confirm you're not a bot") || text.includes("unusual traffic")) {
+      return res.status(403).json({ 
+        error: 'Bot Detection', 
+        message: 'YouTube identified this request as a bot. Please try again in a few minutes.' 
+      });
     }
 
-    const text = await response.text();
-    
-    // Pattern discovery for modern YouTube JSON structures
     const patterns = [
       /ytInitialPlayerResponse\s*=\s*({.+?});/,
       /var\s+ytInitialPlayerResponse\s*=\s*({.+?});/,
@@ -74,25 +69,20 @@ module.exports = async (req, res) => {
     if (!playerResponse) {
       return res.status(404).json({ 
         error: 'Extraction Failed', 
-        message: 'Could not find streaming data. The video might be age-restricted or private.' 
+        message: 'Could not find streaming data. YouTube may have updated its security layers.' 
       });
     }
 
-    // Specific Status Error Handling
     if (playerResponse.playabilityStatus && playerResponse.playabilityStatus.status !== 'OK') {
       return res.status(403).json({
         error: 'Unplayable Video',
-        message: playerResponse.playabilityStatus.reason || 'YouTube blocked access to this video.'
+        message: playerResponse.playabilityStatus.reason || 'YouTube blocked access.'
       });
     }
 
     const streamingData = playerResponse.streamingData;
     const info = playerResponse.videoDetails || {};
-    
-    const formats = [
-      ...(streamingData.adaptiveFormats || []),
-      ...(streamingData.formats || [])
-    ];
+    const formats = [...(streamingData.adaptiveFormats || []), ...(streamingData.formats || [])];
 
     const getUrl = (f) => {
       if (!f) return null;
@@ -107,14 +97,10 @@ module.exports = async (req, res) => {
       return null;
     };
 
-    // Map all available formats for the downloader UI
     const allFormats = formats.map(f => {
       const url = getUrl(f);
       if (!url) return null;
-
-      // Clean up common 403 markers
       const finalUrl = url.includes('ratebypass') ? url : `${url}&ratebypass=yes`;
-
       return {
         itag: f.itag,
         mimeType: f.mimeType.split(';')[0],
@@ -126,7 +112,6 @@ module.exports = async (req, res) => {
       };
     }).filter(f => f !== null);
 
-    // Primary streams for the HarmonyStream Player
     const bestAudio = allFormats.find(f => f.itag === 140) || allFormats.find(f => f.mimeType.includes('audio/mp4'));
     const bestVideo = allFormats.find(f => f.mimeType.includes('video/mp4') && parseInt(f.quality) >= 360);
 
@@ -137,18 +122,12 @@ module.exports = async (req, res) => {
       author: info.author || 'Unknown Artist',
       thumbnail: info.thumbnail?.thumbnails?.pop()?.url || '',
       duration: parseInt(info.lengthSeconds || 0),
-      // App Player Fields
       audioUrl: bestAudio?.url || getUrl(formats.find(f => f.mimeType.includes('audio'))),
       videoUrl: bestVideo?.url || bestAudio?.url,
-      // Downloader UI Fields
       allFormats: allFormats
     });
 
   } catch (error) {
-    console.error(`[Fatal]`, error);
-    return res.status(500).json({ 
-      error: 'Server Error', 
-      message: error.message 
-    });
+    return res.status(500).json({ error: 'Server Error', message: error.message });
   }
 };
