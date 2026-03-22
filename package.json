@@ -1,11 +1,11 @@
-
 {
   "name": "harmony-extraction-api",
-  "version": "1.1.0",
-  "description": "Hardened Private Stream Resolver & Downloader",
+  "version": "1.2.0",
+  "description": "Hardened Private Stream Resolver & Downloader with Profile Rotation",
   "main": "api/extract.js",
   "scripts": {
-    "build": "echo 'Building extraction engine... OK'"
+    "build": "echo 'Building extraction engine... OK'",
+    "start": "node api/extract.js"
   },
   "dependencies": {
     "node-fetch": "^2.7.0"
