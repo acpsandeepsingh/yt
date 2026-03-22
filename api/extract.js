@@ -7,12 +7,14 @@ const fetch = require('node-fetch');
 
 const USER_AGENTS = {
   desktop: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  mobile: 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36'
+  mobile: 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
+  ios: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1'
 };
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Content-Type', 'application/json');
   
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -41,16 +43,17 @@ module.exports = async (req, res) => {
       'Sec-Fetch-User': '?1',
       'Upgrade-Insecure-Requests': '1',
       'Cache-Control': 'no-cache',
-      'Service-Worker-Navigation-Preload': 'true'
+      'X-YouTube-Client-Name': uaType === 'mobile' ? '2' : '1',
+      'X-YouTube-Client-Version': uaType === 'mobile' ? '2.20240301.01.00' : '2.20240301.01.00'
     };
 
     const targetUrl = `https://www.youtube.com/watch?v=${videoId}&has_verified=1&bpctr=${Math.floor(Date.now() / 1000)}`;
     
     try {
-      const response = await fetch(targetUrl, { headers, timeout: 10000 });
+      const response = await fetch(targetUrl, { headers, timeout: 15000 });
       const text = await response.text();
 
-      if (text.includes("confirm you're not a bot") || text.includes("unusual traffic")) {
+      if (text.includes("confirm you're not a bot") || text.includes("unusual traffic") || text.includes("robot")) {
         return { error: 'BOT_DETECTED' };
       }
 
@@ -109,7 +112,7 @@ module.exports = async (req, res) => {
       }).filter(f => f !== null);
 
       const bestAudio = allFormats.find(f => f.itag === 140) || allFormats.find(f => f.mimeType.includes('audio/mp4'));
-      const bestVideo = allFormats.find(f => f.mimeType.includes('video/mp4') && parseInt(f.quality) >= 360);
+      const bestVideo = allFormats.find(f => f.mimeType.includes('video/mp4') && (parseInt(f.quality) >= 360));
 
       return {
         success: true,
@@ -119,7 +122,7 @@ module.exports = async (req, res) => {
         thumbnail: info.thumbnail?.thumbnails?.pop()?.url || '',
         duration: parseInt(info.lengthSeconds || 0),
         audioUrl: bestAudio?.url || getUrl(formats.find(f => f.mimeType.includes('audio'))),
-        videoUrl: bestVideo?.url || bestAudio?.url,
+        videoUrl: bestVideo?.url || (bestAudio?.url || null),
         allFormats
       };
     } catch (e) {
@@ -130,10 +133,16 @@ module.exports = async (req, res) => {
   // Attempt 1: Desktop
   let result = await tryExtract('desktop');
   
-  // Attempt 2: Mobile Fallback (often bypasses Vercel IP blocks)
+  // Attempt 2: Mobile Fallback (often bypasses IP blocks)
   if (result.error === 'BOT_DETECTED') {
     console.log(`[Engine] Desktop blocked for ${videoId}, retrying with Mobile identity...`);
     result = await tryExtract('mobile');
+  }
+
+  // Attempt 3: iOS Fallback (Last resort)
+  if (result.error === 'BOT_DETECTED') {
+    console.log(`[Engine] Mobile blocked for ${videoId}, retrying with iOS identity...`);
+    result = await tryExtract('ios');
   }
 
   if (result.success) {
