@@ -1,11 +1,21 @@
 const fetch = require('node-fetch');
 
 /**
- * HarmonyStream Hardened Extraction Engine v7
- * Features: Quad-Profile Rotation including low-security device emulation (Oculus/Quest).
+ * HarmonyStream Hardened Extraction Engine v8
+ * Features: Quad-Profile Rotation including low-security device emulation.
  */
 
 const PROFILES = [
+  {
+    name: 'ANDROID_APP',
+    ua: 'com.google.android.youtube/19.05.36 (Linux; U; Android 14; en_US; SM-G998B) gzip',
+    headers: {
+      'X-YouTube-Client-Name': '3',
+      'X-YouTube-Client-Version': '2.20240215.00.00',
+      'Origin': 'https://www.youtube.com',
+      'Sec-Fetch-Mode': 'navigate'
+    }
+  },
   {
     name: 'DESKTOP_WEB',
     ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -14,17 +24,7 @@ const PROFILES = [
       'Sec-Fetch-Dest': 'document',
       'Sec-Fetch-Mode': 'navigate',
       'Sec-Fetch-Site': 'none',
-      'Sec-Fetch-User': '?1',
       'Upgrade-Insecure-Requests': '1'
-    }
-  },
-  {
-    name: 'ANDROID_APP',
-    ua: 'com.google.android.youtube/19.05.36 (Linux; U; Android 14; en_US; SM-G998B) gzip',
-    headers: {
-      'X-YouTube-Client-Name': '3',
-      'X-YouTube-Client-Version': '2.20240215.00.00',
-      'Origin': 'https://www.youtube.com'
     }
   },
   {
@@ -74,7 +74,7 @@ module.exports = async (req, res) => {
     };
 
     try {
-      const response = await fetch(targetUrl, { headers, timeout: 12000 });
+      const response = await fetch(targetUrl, { headers, timeout: 10000 });
       if (!response.ok) return { error: `HTTP_${response.status}` };
       
       const html = await response.text();
@@ -148,6 +148,7 @@ module.exports = async (req, res) => {
   };
 
   let lastError = null;
+  // Try profiles in rotation
   for (const profile of PROFILES) {
     const result = await tryExtraction(profile);
     if (result.success) return res.status(200).json(result);
