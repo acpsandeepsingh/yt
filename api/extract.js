@@ -2,7 +2,7 @@ const fetch = require('node-fetch');
 
 /**
  * HarmonyStream Hardened Extraction Engine
- * Features: Identity Rotation, Client Hint Mimicry, and Adaptive Fallbacks.
+ * Features: Identity Rotation, Client Hint Mimicry, and Advanced Error Recovery.
  */
 
 const USER_AGENTS = {
@@ -12,6 +12,7 @@ const USER_AGENTS = {
 };
 
 module.exports = async (req, res) => {
+  // CORS Configuration
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -22,6 +23,7 @@ module.exports = async (req, res) => {
   const { id, url } = req.query;
   let videoId = id;
 
+  // Handle full URL inputs if provided instead of just ID
   if (url) {
     const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
     const match = url.match(regExp);
@@ -29,9 +31,15 @@ module.exports = async (req, res) => {
   }
 
   if (!videoId) {
-    return res.status(400).json({ error: 'Invalid Request', message: 'Provide a valid YouTube Video ID.' });
+    return res.status(400).json({ 
+      error: 'INVALID_REQUEST', 
+      message: 'Provide a valid YouTube Video ID or URL.' 
+    });
   }
 
+  /**
+   * Main extraction logic with robust error handling
+   */
   const tryExtract = async (uaType) => {
     const headers = {
       'User-Agent': USER_AGENTS[uaType],
@@ -41,22 +49,29 @@ module.exports = async (req, res) => {
       'Sec-Fetch-Mode': 'navigate',
       'Sec-Fetch-Site': 'none',
       'Sec-Fetch-User': '?1',
-      'Upgrade-Insecure-Requests': '1',
       'Cache-Control': 'no-cache',
-      'X-YouTube-Client-Name': uaType === 'mobile' ? '2' : '1',
-      'X-YouTube-Client-Version': uaType === 'mobile' ? '2.20240301.01.00' : '2.20240301.01.00'
+      'Upgrade-Insecure-Requests': '1'
     };
 
     const targetUrl = `https://www.youtube.com/watch?v=${videoId}&has_verified=1&bpctr=${Math.floor(Date.now() / 1000)}`;
     
     try {
       const response = await fetch(targetUrl, { headers, timeout: 15000 });
+      if (!response.ok) throw new Error(`HTTP_${response.status}`);
+      
       const text = await response.text();
 
+      // Detect Bot Challenges
       if (text.includes("confirm you're not a bot") || text.includes("unusual traffic") || text.includes("robot")) {
         return { error: 'BOT_DETECTED' };
       }
 
+      // Detect Specific Video Restrictions
+      if (text.includes("Sign in to confirm your age")) return { error: 'AGE_RESTRICTED' };
+      if (text.includes("This video is private")) return { error: 'PRIVATE_VIDEO' };
+      if (text.includes("The uploader has not made this video available in your country")) return { error: 'REGION_BLOCKED' };
+
+      // Advanced JSON Discovery Patterns
       const patterns = [
         /ytInitialPlayerResponse\s*=\s*({.+?});/,
         /var\s+ytInitialPlayerResponse\s*=\s*({.+?});/,
@@ -78,7 +93,7 @@ module.exports = async (req, res) => {
         }
       }
 
-      if (!playerResponse) return { error: 'NO_DATA' };
+      if (!playerResponse) return { error: 'DATA_PARSE_FAILED' };
 
       const info = playerResponse.videoDetails || {};
       const streamingData = playerResponse.streamingData;
@@ -92,6 +107,7 @@ module.exports = async (req, res) => {
           const p = new URLSearchParams(c);
           const u = p.get('url');
           const s = p.get('s') || p.get('sig');
+          // Basic signature join - complex ciphers require JS execution which isn't easy in serverless
           return u && s ? `${u}&sig=${s}` : u;
         }
         return null;
@@ -111,47 +127,56 @@ module.exports = async (req, res) => {
         };
       }).filter(f => f !== null);
 
+      // Selection Logic for App Player
       const bestAudio = allFormats.find(f => f.itag === 140) || allFormats.find(f => f.mimeType.includes('audio/mp4'));
       const bestVideo = allFormats.find(f => f.mimeType.includes('video/mp4') && (parseInt(f.quality) >= 360));
 
       return {
         success: true,
         videoId,
-        title: info.title || 'Unknown',
-        author: info.author || 'Unknown',
+        title: info.title || 'Unknown Title',
+        author: info.author || 'Unknown Artist',
         thumbnail: info.thumbnail?.thumbnails?.pop()?.url || '',
         duration: parseInt(info.lengthSeconds || 0),
-        audioUrl: bestAudio?.url || getUrl(formats.find(f => f.mimeType.includes('audio'))),
+        audioUrl: bestAudio?.url || null,
         videoUrl: bestVideo?.url || (bestAudio?.url || null),
         allFormats
       };
     } catch (e) {
-      return { error: 'FETCH_ERROR', message: e.message };
+      return { error: 'NETWORK_ERROR', message: e.message };
     }
   };
 
-  // Attempt 1: Desktop
+  // Tiered Retry Strategy
   let result = await tryExtract('desktop');
   
-  // Attempt 2: Mobile Fallback (often bypasses IP blocks)
-  if (result.error === 'BOT_DETECTED') {
-    console.log(`[Engine] Desktop blocked for ${videoId}, retrying with Mobile identity...`);
+  // Strategy 1: Desktop fail -> Try Mobile (Lighter Security)
+  if (result.error === 'BOT_DETECTED' || result.error === 'HTTP_403') {
     result = await tryExtract('mobile');
   }
 
-  // Attempt 3: iOS Fallback (Last resort)
+  // Strategy 2: Mobile fail -> Try iOS (Strict but often different IP pools)
   if (result.error === 'BOT_DETECTED') {
-    console.log(`[Engine] Mobile blocked for ${videoId}, retrying with iOS identity...`);
     result = await tryExtract('ios');
   }
 
+  // Final Response Mapping
   if (result.success) {
     return res.status(200).json(result);
   }
 
-  return res.status(403).json({
-    error: 'Extraction Blocked',
-    message: 'YouTube identified this request as a bot. Fallback to standard player required.',
-    details: result.error
+  const errorMap = {
+    'BOT_DETECTED': { code: 403, msg: 'YouTube identified the request as a bot. IP restricted.' },
+    'AGE_RESTRICTED': { code: 403, msg: 'This video requires age verification.' },
+    'REGION_BLOCKED': { code: 403, msg: 'This video is not available in the current server region.' },
+    'DATA_PARSE_FAILED': { code: 500, msg: 'Failed to extract streaming data from YouTube.' }
+  };
+
+  const finalError = errorMap[result.error] || { code: 500, msg: result.message || 'Unknown Extraction Error' };
+  
+  return res.status(finalError.code).json({
+    success: false,
+    error: result.error,
+    message: finalError.msg
   });
 };
